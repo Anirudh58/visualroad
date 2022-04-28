@@ -65,12 +65,18 @@ def start_carla(seed, fps=30, quality='Epic', executable=None):
         stop_carla()
 
     executable = executable or os.environ['CARLA_EXECUTABLE']
+    carla_path = os.environ['CARLA_PATH']
+
     subprocess.Popen([executable,
+                      '-RenderOffScreen',
+                      '-carla-server',
                       '-benchmark',
                       '-fps=%d' % fps,
                       '-quality-level=%s' % quality,
-                      '-fixedseed=%d' % int(seed)], cwd=os.path.dirname(executable))
-    time.sleep(360)
+                      '-fixedseed=%d' % int(seed),
+                      '-nosound'], cwd=os.path.dirname(executable))
+
+    time.sleep(30)
 
 
 def stop_carla():
