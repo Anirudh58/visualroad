@@ -2,12 +2,17 @@ version: "2.3"
 
 services:
   generator:
-    image: visualroad/core:latest
+    image: carlasim/eva:latest
+    privileged: true
     runtime: nvidia
-    working_dir: /app
+    working_dir: /home/eva/visualroad
     volumes:
-      - .:/app
-    entrypoint: python3 /home/ue4/visualroad/generator.py
+      - .:/home/eva/visualroad
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    environment:
+      - OUTPUT_PATH=/home/eva/visualroad
+    entrypoint: python3 /home/eva/visualroad/generator.py
+    #command: tail -F anything
 
   driver:
     image: visualroad/core:latest
@@ -15,7 +20,7 @@ services:
     working_dir: /app
     volumes:
       - .:/app
-    entrypoint: python3 /home/ue4/visualroad/driver.py
+    entrypoint: python3 /home/eva/visualroad/driver.py
 
   verifier:
     image: visualroad/core:latest
@@ -23,5 +28,5 @@ services:
     working_dir: /app
     volumes:
       - .:/app
-    entrypoint: python3 /home/ue4/visualroad/verifier.py
+    entrypoint: python3 /home/eva/visualroad/verifier.py
 
