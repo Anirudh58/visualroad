@@ -81,5 +81,6 @@ RUN pip install --user carla && \
     pip3 install --user carla
 
 # Install other Python packages
-RUN pip2 install --user numpy pyyaml opencv-python psutil & \
-    pip3 install --user numpy pyyaml opencv-python psutil
+RUN pip2 install --user numpy pyyaml opencv-python psutil scikit-image & \
+    pip3 install --user numpy pyyaml opencv-python psutil scikit-image
+

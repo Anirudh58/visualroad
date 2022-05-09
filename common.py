@@ -76,7 +76,7 @@ def start_carla(seed, fps=30, quality='Epic', executable=None):
                       '-fixedseed=%d' % int(seed),
                       '-nosound'], cwd=os.path.dirname(executable))
 
-    time.sleep(30)
+    time.sleep(10)
 
 
 def stop_carla():

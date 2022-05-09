@@ -14,6 +14,18 @@ services:
     entrypoint: python3 /home/eva/visualroad/generator.py
     #command: tail -F anything
 
+  test:
+    image: carlasim/eva:latest
+    privileged: true
+    runtime: nvidia
+    working_dir: /home/eva/visualroad
+    volumes:
+      - .:/home/eva/visualroad
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    environment:
+      - OUTPUT_PATH=/home/eva/visualroad
+    entrypoint: python3 /home/eva/visualroad/test.py
+
   driver:
     image: visualroad/core:latest
     runtime: nvidia
