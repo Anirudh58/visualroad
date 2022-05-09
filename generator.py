@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+import csv
 import time
 import os
 import subprocess
@@ -10,6 +11,7 @@ import itertools
 import carla
 import numpy as np
 import cv2
+import skimage.measure as measure
 import argparse
 import yaml
 import logging
@@ -17,7 +19,7 @@ from common import *
 
 
 class Configuration:
-    def __init__(self, client, id, path, scale, resolution, duration, panorama_fov, vehicle_locations, walker_locations, traffic_camera_locations, panoramic_camera_locations):
+    def __init__(self, client, id, path, scale, resolution, duration, targets, panorama_fov, vehicle_locations, walker_locations, traffic_camera_locations, panoramic_camera_locations):
         self.client = client
         self.id = id
         self.world = client.get_world()
@@ -25,6 +27,7 @@ class Configuration:
         self.scale = scale
         self.resolution = resolution
         self.duration = duration
+        self.targets = targets
         self.panorama_fov = panorama_fov or PANORAMIC_FOV
         self.all_walker_locations = self._shuffle([location for location in walker_locations])
         self.remaining_vehicle_locations = self._shuffle(list(vehicle_locations))
@@ -32,11 +35,25 @@ class Configuration:
         self.remaining_traffic_camera_locations = self._shuffle(list(traffic_camera_locations))
         self.remaining_panoramic_camera_locations = self._shuffle(list(panoramic_camera_locations))
 
+        # BGR value exmaples of few objects: 
+        # full list at https://carla.readthedocs.io/en/0.9.9/ref_sensors/ 
+        self.object_list = dict()
+        self.object_list['building'] = np.uint8([[[70, 70, 70]]])        
+        self.object_list['pedestrian'] = np.uint8([[[220, 20, 60]]])
+        self.object_list['vegetation'] = np.uint8([[[107, 142, 35]]])
+        self.object_list['car'] = np.uint8([[[ 0, 0, 142]]])
+        self.object_list['fence'] = np.uint8([[[ 190, 153, 153]]])
+        self.object_list['traffic_sign'] = np.uint8([[[220, 220, 0]]])
+        self.object_list['pole'] = np.uint8([[[153, 153, 153]]])
+        self.object_list['wall'] = np.uint8([[[102, 102, 156]]])
+        
+
         if not os.path.exists(path):
             os.makedirs(path)
 
     def next_vehicle_location(self):
-        return self.remaining_vehicle_locations.pop() if self.remaining_vehicle_locations else None
+        popped_vehicle_location =  self.remaining_vehicle_locations.pop() if self.remaining_vehicle_locations else None
+        return popped_vehicle_location
 
     def next_walker_location(self):
         return self.remaining_walker_locations.pop()
@@ -79,6 +96,24 @@ SpawnActor = carla.command.SpawnActor
 SetAutopilot = carla.command.SetAutopilot
 FutureActor = carla.command.FutureActor
 
+def get_mask(seg_im, rgb_value):
+    # rgb_value should be somethiing like np.uint8([[[70, 70, 70]]])
+    # seg_im should be in HSV
+    
+    hsv_value = cv2.cvtColor(rgb_value, cv2.COLOR_RGB2HSV)
+    
+    hsv_low = np.array([[[hsv_value[0][0][0]-5, hsv_value[0][0][1], hsv_value[0][0][2]-5]]])
+    hsv_high = np.array([[[hsv_value[0][0][0]+5, hsv_value[0][0][1], hsv_value[0][0][2]+5]]])
+    
+    mask = cv2.inRange(seg_im, hsv_low, hsv_high)
+    return mask
+
+def get_bbox_from_mask(mask):
+    label_mask = measure.label(mask)
+    props = measure.regionprops(label_mask)
+    
+    return [prop.bbox for prop in props]
+
 
 def create_listener(configuration, type, id):
     count = [-INITIALIZATION_FRAME_SLACK]
@@ -91,9 +126,57 @@ def create_listener(configuration, type, id):
         writer.clear()
 
     def listener(image):
+        
         if 0 <= count[0] <= FPS * configuration.duration:
+            
             if 'semantic' in type:
                 image.convert(carla.ColorConverter.CityScapesPalette)
+
+                # use semantic image to get bbox info
+                semseg_img = np.asarray(image.raw_data, np.uint8).reshape(configuration.resolution[1], configuration.resolution[0], 4)[:,:,:3]
+                semseg_img_bgr = cv2.cvtColor(semseg_img, cv2.COLOR_BGRA2BGR)
+                semseg_img_hsv = cv2.cvtColor(semseg_img_bgr, cv2.COLOR_BGR2HSV)
+
+                # find each object in the semseg image
+                obj_id = 0
+                for obj in configuration.targets:
+                    mask = get_mask(semseg_img_hsv, configuration.object_list[obj])
+                    bboxes = get_bbox_from_mask(mask)
+
+                    # iterate over bboxes
+                    for bbox in bboxes:
+                        minr, minc, maxr, maxc = bbox
+
+                        record = {}
+                        record['frame_id'] = image.frame
+                        record['video_id'] = '_%s-%03d.mp4' % (type, id)
+                        record['dataset_name'] = 'carla'
+                        record['label'] = obj
+                        record['bbox'] = f"[{minc} {minr} {maxc} {maxr}]"
+                        record['object_id'] = obj_id
+
+                        write_file = record['video_id'].replace('mp4', 'csv')
+                        write_path = os.path.join(configuration.path, write_file)
+
+                        header = [key for key in record]
+                        write_row = [record[key] for key in header]
+                        
+                        # add header if this is the first row
+                        add_header = False
+                        if not os.path.exists(write_path):
+                            add_header = True
+
+                        with open(write_path, 'a') as f:
+
+                            csv_writer = csv.writer(f)
+                            
+                            # write header if its the first row
+                            if add_header:
+                                csv_writer.writerow(header)
+
+                            # write the row
+                            csv_writer.writerow(write_row)
+
             data = image.raw_data
             image = np.asarray(data, np.uint8).reshape(configuration.resolution[1], configuration.resolution[0], 4)[:,:,:3]
             writer[0].write(image)
@@ -130,6 +213,9 @@ def create_camera(configuration, type, id, transform=None, fov=90, yaw=None, loc
     camera.listen(listener)
 
     return camera
+
+def create_depth_camera(configuration, id, transform, prefix='traffic'):
+    return create_camera(configuration, 'depth-' + prefix, id, transform=transform, blueprint_name='sensor.camera.depth')
 
 
 def create_semantic_camera(configuration, id, transform, prefix='traffic'):
@@ -222,7 +308,7 @@ def is_complete(id, scale, cameras, duration, start_time):
     return frame_count >= duration * FPS
 
 
-def generate_tile(client, path, id, tile, scale, resolution, duration, panorama_fov):
+def generate_tile(client, path, id, tile, scale, resolution, duration, targets, panorama_fov):
     traffic_cameras = []
     panoramic_cameras = []
     vehicles = []
@@ -247,6 +333,7 @@ def generate_tile(client, path, id, tile, scale, resolution, duration, panorama_
         scale=scale,
         resolution=resolution,
         duration=duration,
+        targets=targets,
         panorama_fov=panorama_fov,
         vehicle_locations=world.get_map().get_spawn_points(),
         walker_locations=Configuration.draw_n(world.get_random_location_from_navigation, tile.walkers),
@@ -326,7 +413,7 @@ def write_configuration(path, tiles, scale, resolution, duration, panorama_fov, 
         yaml.dump(configuration, file)
 
 
-def generate(path, tiles, scale, resolution, duration, panorama_fov, seed=None, vehicles=None, walkers=None, hostname='localhost', port=2000, timeout=150):
+def generate(path, tiles, scale, resolution, duration, targets, panorama_fov, seed=None, vehicles=None, walkers=None, hostname='localhost', port=2000, timeout=60):
     random.seed(seed)
 
     try:
@@ -346,7 +433,7 @@ def generate(path, tiles, scale, resolution, duration, panorama_fov, seed=None, 
                 used_tiles[-1].walkers = walkers
             logging.info(used_tiles[-1])
             write_configuration(path, used_tiles, scale, resolution, duration, panorama_fov, seed, hostname, port, timeout)
-            generate_tile(client, path, id, used_tiles[-1], scale, resolution, duration, panorama_fov)
+            generate_tile(client, path, id, used_tiles[-1], scale, resolution, duration, targets, panorama_fov)
 
         transcode_videos(path)
     finally:
@@ -400,6 +487,11 @@ if __name__ == '__main__':
         type=int,
         help='Override tile parameters and force number of pedestrians to a specific number')
     parser.add_argument(
+        '-l', '--targets',
+        metavar='TARGETS',
+        default='[car, pedestrian]',
+        help='Pass a list of labels for which you want bounding box information')
+    parser.add_argument(
         '-f', '--fov',
         metavar='FOV',
         default=None,
@@ -422,4 +514,7 @@ if __name__ == '__main__':
     if not os.path.isabs(args.path):
         args.path = os.path.join(os.environ['OUTPUT_PATH'], args.path)
 
-    generate(args.path, tile_pool, args.scale, (args.width, args.height), args.duration, args.fov, args.seed, args.vehicles, args.pedestrians)
+    # convert targets to list
+    targets = args.targets[1:-1].split(',')
+
+    generate(args.path, tile_pool, args.scale, (args.width, args.height), args.duration, targets, args.fov, args.seed, args.vehicles, args.pedestrians)

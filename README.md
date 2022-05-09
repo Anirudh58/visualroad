@@ -20,5 +20,12 @@ docker build -t carlasim/eva .
 
 ## Synthetic Dataset Generation
 
-1. Initiate dataset generation by running the `generator` service.  For example, the following command generates a scale-one dataset named `my-dataset`: `docker-compose run generator --scale 1 my-dataset`.
+1. Generate dataset with the following commands.
+
+```sh
+mkdir dataset
+chmod 777 dataset
+docker-compose run generator -s 1 -d 10 -l [car,pedestrian] dataset
+```
+
 2. The generator service supports a number of additional options (e.g., `--height`, `--width`, `--duration`).  Execute `docker-compose run generator -h` for a complete list.
