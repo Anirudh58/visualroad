@@ -2,14 +2,10 @@
 
 - This repo is an extension of visualroad, please check their [project website](https://db.cs.washington.edu/projects/visualroad) for more details about the benchmark, links to the papers, sample videos, and pregenerated datasets.
 
-## Building the Visual Road Docker Image
-
-Because of licensing restrictions on the Unreal engine, we cannot release a pre-built Docker container for the Visual Road benchmark.  However, we have striven to make the build process as painless as possible!  Note that Visual Road depends on Unreal version 4.22.0 and only supports Linux builds.
+## Building the Docker Image
 
 1. Install [Docker CE](https://docs.docker.com/install/linux/docker-ce/), if not already installed.
 2. Install [Python 3.6](https://www.python.org/downloads/) or later, if not already installed:
-
-
 3. Clone the [Visual Road repository](https://github.com/georgia-tech-db/visualroad.git) and build the benchmark image:
 
 ```sh
@@ -20,7 +16,7 @@ docker build -t carlasim/eva .
 
 ## Synthetic Dataset Generation
 
-1. Generate dataset with the following commands. Note: `-l` flag specifies what objects you need ground truth info for. 
+1. Generate a scale-one dataset with videos of 10 sec each with the following command. Note: `-l` flag specifies what objects you need ground truth info for. 
 
 ```sh
 mkdir dataset
