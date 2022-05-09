@@ -13,14 +13,14 @@ Because of licensing restrictions on the Unreal engine, we cannot release a pre-
 3. Clone the [Visual Road repository](https://github.com/georgia-tech-db/visualroad.git) and build the benchmark image:
 
 ```sh
-git clone https://github.com/uwdb/visualroad
+git clone https://github.com/georgia-tech-db/visualroad
 cd visualroad
 docker build -t carlasim/eva .
 ```
 
 ## Synthetic Dataset Generation
 
-1. Generate dataset with the following commands.
+1. Generate dataset with the following commands. Note: `-l` flag specifies what objects you need ground truth info for. 
 
 ```sh
 mkdir dataset
